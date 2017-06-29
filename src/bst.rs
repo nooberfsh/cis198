@@ -11,14 +11,14 @@ fn new_link<T: Ord>(data: T) -> Link<T> {
 }
 
 #[derive(Eq, Debug)]
-struct Node<T: Ord> {
+struct Node<T> {
     data: T,
     parent: Option<Link<T>>,
     left: Option<Link<T>>,
     right: Option<Link<T>>,
 }
 
-impl<T: Ord> PartialEq for Node<T> {
+impl<T: PartialEq> PartialEq for Node<T> {
     fn eq(&self, other: &Node<T>) -> bool {
         self.data == other.data
     }
@@ -54,26 +54,33 @@ impl<T: Ord> Deref for Node<T> {
     }
 }
 
-#[derive(Debug)]
-pub struct BST<T: Ord> {
+#[derive(Debug, Default)]
+pub struct BST<T> {
     root: Option<Link<T>>,
+    min: Option<Link<T>>,
+    max: Option<Link<T>>,
 }
 
 impl<T: Debug + Ord> BST<T> {
     pub fn new() -> Self {
-        BST { root: Default::default() }
+        BST {
+            root: Default::default(),
+            max: Default::default(),
+            min: Default::default(),
+        }
     }
 
-    pub fn walk(&mut self, ) {
-    }
+    pub fn walk(&mut self) {}
 }
 
-impl<T: Ord> Drop for BST<T> {
+impl<T> Drop for BST<T> {
     fn drop(&mut self) {
+        self.min.take();
+        self.max.take();
         match self.root {
             Some(ref mut root) => {
-                BST{root: root.borrow_mut().right.take()};
-                BST{root: root.borrow_mut().right.take()};
+                BST { root: root.borrow_mut().left.take() , min: None, max: None };
+                BST { root: root.borrow_mut().right.take(), min: None, max: None };
             }
             None => {}
         }
@@ -81,47 +88,42 @@ impl<T: Ord> Drop for BST<T> {
 }
 
 impl<T: Ord> BST<T> {
-    fn insert_link(&mut self, link: Link<T>) -> bool {
-        match self.root {
-            Some(ref mut root) => {
-                if *root < link {
-                    let right = &mut root.borrow_mut().right;
-                    if right.is_none() {
-                        link.borrow_mut().parent = Some(root.clone());
-                        *right = Some(link);
-                        return true;
-                    } else {
-                        BST { root: right.clone() }.insert_link(link)
-                    }
-                } else if *root > link {
-                    let left = &mut root.borrow_mut().left;
-                    if left.is_none() {
-                        link.borrow_mut().parent = Some(root.clone());
-                        *left = Some(link);
-                        return true;
-                    } else {
-                        BST { root: left.clone() }.insert_link(link)
-                    }
-                } else {
-                    return false;
-                }
-            }
-            None => {
-                self.root = Some(link);
-                true
-            }
-        }
-    }
-
     pub fn insert(&mut self, data: T) -> bool {
         let link = new_link(data);
-        self.insert_link(link)
+        if self.root.is_none() {
+            self.root = Some(link);
+            return true;
+        }
+        let mut node = self.root.clone().unwrap();
+        loop {
+            if link < node {
+                if node.borrow().left.is_none() {
+                    link.borrow_mut().parent = Some(node.clone());
+                    node.borrow_mut().left = Some(link);
+                    return true;
+                } else {
+                    let tmp = node.borrow().left.clone().unwrap();
+                    node = tmp;
+                }
+            } else if link > node {
+                if node.borrow().right.is_none() {
+                    link.borrow_mut().parent = Some(node.clone());
+                    node.borrow_mut().right = Some(link);
+                    return true;
+                } else {
+                    let tmp = node.borrow().right.clone().unwrap();
+                    node = tmp
+                }
+            } else {
+                return false;
+            }
+        }
     }
 
     pub fn search(&self, data: &T) -> bool {
         match self.root {
             Some(ref root) => {
-                let mut sub = BST { root: None };
+                let mut sub = BST { root: None, min: None, max: None };
                 if **root.borrow() < *data {
                     sub.root = root.borrow().right.clone();
                 } else if **root.borrow() > *data {
@@ -133,6 +135,21 @@ impl<T: Ord> BST<T> {
             }
             None => false,
         }
+    }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter { next: self }
+    }
+}
+
+pub struct IntoIter<T> {
+    next: BST<T>,
+}
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
     }
 }
 
@@ -155,7 +172,7 @@ mod tests {
 
 
     #[derive(Debug, Ord, Default, PartialEq, PartialOrd, Eq, Clone)]
-    struct Td (u64);
+    struct Td(u64);
 
     impl Drop for Td {
         fn drop(&mut self) {
@@ -173,7 +190,7 @@ mod tests {
             bst.insert(Td(i));
         }
 
-        
+
         //info!("{:#?}", bst);
         //debug!("{:?}", bst);
     }
