@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::ops::Deref;
 use std::fmt::Debug;
 use std::iter::IntoIterator;
+use std::marker::PhantomData;
 
 type Link<T> = Rc<RefCell<Node<T>>>;
 
@@ -107,32 +108,11 @@ impl<T: Ord> BST<T> {
     }
 
     pub fn search(&self, data: &T) -> bool {
-        match self.root {
-            Some(ref root) => {
-                let mut sub = BST { root: None };
-                if **root.borrow() < *data {
-                    sub.root = root.borrow().right.clone();
-                } else if **root.borrow() > *data {
-                    sub.root = root.borrow().left.clone();
-                } else {
-                    return true;
-                }
-                sub.search(data)
-            }
-            None => false,
-        }
+        unimplemented!()
     }
 
     fn min(&self) -> Option<Link<T>> {
-        self.root.as_ref().map(|n| {
-            let mut parent = n.clone();
-            let mut left = parent.borrow().left.clone();
-            while let Some(ln) = left.clone() {
-                parent = ln;
-                left = parent.borrow().left.clone();
-            }
-            parent
-        })
+        self.root.as_ref().map(|n| min_link(n.clone()))
     }
 
     fn remove_min(&mut self) {
@@ -145,7 +125,7 @@ impl<T: Ord> BST<T> {
                             p.borrow_mut().left = Some(r.clone());
                             r.borrow_mut().parent = Some(p);
                         }
-                        None =>  p.borrow_mut().left = None,
+                        None => p.borrow_mut().left = None,
                     }
                 }
                 None => {
@@ -157,12 +137,45 @@ impl<T: Ord> BST<T> {
             }
         }
     }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            next: self.min(),
+            _marker: Default::default(),
+        }
+    }
+}
+
+fn min_link<T: Ord>(mut parent: Link<T>) -> Link<T> {
+    let mut left = parent.borrow().left.clone();
+    while let Some(ln) = left.clone() {
+        parent = ln;
+        left = parent.borrow().left.clone();
+    }
+    parent
+}
+
+fn next_link<T: Ord>(current: Link<T>) -> Option<Link<T>> {
+    let currentb = current.borrow();
+    match currentb.right {
+        Some(ref right) => Some(min_link(right.clone())),
+        None => {
+            let mut parent = currentb.parent.clone();
+            while let Some(p) = parent.clone() {
+                if p > current {
+                    return Some(p.clone());
+                }
+                parent = p.borrow().parent.clone();
+            }
+            None
+        }
+    }
 }
 
 impl<T: Ord + Debug> IntoIterator for BST<T> {
     type Item = T;
     type IntoIter = IntoIter<T>;
-    fn into_iter(mut self) -> Self::IntoIter {
+    fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             min: self.min(),
             bst: self,
@@ -175,14 +188,29 @@ pub struct IntoIter<T: Ord> {
     bst: BST<T>,
 }
 
+pub struct Iter<'a, T: Ord + 'a> {
+    next: Option<Link<T>>,
+    _marker: PhantomData<&'a T>,
+}
+
 impl<T: Ord + Debug> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        self.min.take().map(|n|{
+        self.min.take().map(|n| {
             self.bst.remove_min();
             assert_eq!(1, Rc::strong_count(&n));
             self.min = self.bst.min();
             Rc::try_unwrap(n).unwrap().into_inner().into_inner()
+        })
+    }
+}
+
+impl<'a, T: Ord> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.take().map(|next| {
+            self.next = next_link(next.clone());
+            unsafe { &**next.as_ptr() }
         })
     }
 }
