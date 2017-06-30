@@ -1,8 +1,9 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::fmt::Debug;
 use std::ops::Deref;
+use std::fmt::Debug;
+use std::iter::IntoIterator;
 
 type Link<T> = Rc<RefCell<Node<T>>>;
 
@@ -45,6 +46,10 @@ impl<T: Ord> Node<T> {
             right: None,
         }
     }
+
+    fn into_inner(self) -> T {
+        self.data
+    }
 }
 
 impl<T: Ord> Deref for Node<T> {
@@ -57,32 +62,13 @@ impl<T: Ord> Deref for Node<T> {
 #[derive(Debug, Default)]
 pub struct BST<T> {
     root: Option<Link<T>>,
-    min: Option<Link<T>>,
-    max: Option<Link<T>>,
-}
-
-impl<T: Debug + Ord> BST<T> {
-    pub fn new() -> Self {
-        BST {
-            root: Default::default(),
-            max: Default::default(),
-            min: Default::default(),
-        }
-    }
-
-    pub fn walk(&mut self) {}
 }
 
 impl<T> Drop for BST<T> {
     fn drop(&mut self) {
-        self.min.take();
-        self.max.take();
-        match self.root {
-            Some(ref mut root) => {
-                BST { root: root.borrow_mut().left.take() , min: None, max: None };
-                BST { root: root.borrow_mut().right.take(), min: None, max: None };
-            }
-            None => {}
+        if let Some(ref mut root) = self.root {
+            BST { root: root.borrow_mut().left.take() };
+            BST { root: root.borrow_mut().right.take() };
         }
     }
 }
@@ -123,7 +109,7 @@ impl<T: Ord> BST<T> {
     pub fn search(&self, data: &T) -> bool {
         match self.root {
             Some(ref root) => {
-                let mut sub = BST { root: None, min: None, max: None };
+                let mut sub = BST { root: None };
                 if **root.borrow() < *data {
                     sub.root = root.borrow().right.clone();
                 } else if **root.borrow() > *data {
@@ -137,19 +123,67 @@ impl<T: Ord> BST<T> {
         }
     }
 
-    pub fn into_iter(self) -> IntoIter<T> {
-        IntoIter { next: self }
+    fn min(&self) -> Option<Link<T>> {
+        self.root.as_ref().map(|n| {
+            let mut parent = n.clone();
+            let mut left = parent.borrow().left.clone();
+            while let Some(ln) = left.clone() {
+                parent = ln;
+                left = parent.borrow().left.clone();
+            }
+            parent
+        })
+    }
+
+    fn remove_min(&mut self) {
+        if let Some(ref min) = self.min() {
+            let mmin = min.borrow_mut();
+            match mmin.parent.clone() {
+                Some(p) => {
+                    match mmin.right.clone() {
+                        Some(r) => {
+                            p.borrow_mut().left = Some(r.clone());
+                            r.borrow_mut().parent = Some(p);
+                        }
+                        None =>  p.borrow_mut().left = None,
+                    }
+                }
+                None => {
+                    self.root = mmin.right.clone();
+                    if let Some(ref n) = self.root {
+                        n.borrow_mut().parent = None
+                    }
+                }
+            }
+        }
     }
 }
 
-pub struct IntoIter<T> {
-    next: BST<T>,
+impl<T: Ord + Debug> IntoIterator for BST<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+    fn into_iter(mut self) -> Self::IntoIter {
+        IntoIter {
+            min: self.min(),
+            bst: self,
+        }
+    }
 }
 
-impl<T> Iterator for IntoIter<T> {
+pub struct IntoIter<T: Ord> {
+    min: Option<Link<T>>,
+    bst: BST<T>,
+}
+
+impl<T: Ord + Debug> Iterator for IntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        self.min.take().map(|n|{
+            self.bst.remove_min();
+            assert_eq!(1, Rc::strong_count(&n));
+            self.min = self.bst.min();
+            Rc::try_unwrap(n).unwrap().into_inner().into_inner()
+        })
     }
 }
 
@@ -161,37 +195,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bst() {
-        let mut bst = BST::new();
-        bst.insert(50);
-        for _ in 0..100 {
-            bst.insert(rand::random::<u32>() % 100);
-        }
-        bst.walk();
-    }
-
-
-    #[derive(Debug, Ord, Default, PartialEq, PartialOrd, Eq, Clone)]
-    struct Td(u64);
-
-    impl Drop for Td {
-        fn drop(&mut self) {
-            info!("begin panic");
-            panic!("haha");
-        }
-    }
+    fn test_bst() {}
 
     #[test]
-    fn test_drop() {
-        let _ = env_logger::init();
-        let mut bst = BST::new();
-        //bst.insert(Td(50));
-        for i in 0..100 {
-            bst.insert(Td(i));
-        }
-
-
-        //info!("{:#?}", bst);
-        //debug!("{:?}", bst);
-    }
+    fn test_drop() {}
 }
