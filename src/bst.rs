@@ -5,6 +5,7 @@ use std::ops::{Deref, DerefMut};
 use std::fmt::Debug;
 use std::iter::IntoIterator;
 use std::marker::PhantomData;
+use std::collections::VecDeque;
 
 type Link<T> = Rc<RefCell<Node<T>>>;
 
@@ -66,16 +67,32 @@ impl<T: Ord> DerefMut for Node<T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct BST<T> {
     root: Option<Link<T>>,
 }
 
+impl<T> Default for BST<T> {
+    fn default() -> Self {
+        BST { root: None }
+    }
+}
+
 impl<T> Drop for BST<T> {
     fn drop(&mut self) {
-        if let Some(ref mut root) = self.root {
-            BST { root: root.borrow_mut().left.take() };
-            BST { root: root.borrow_mut().right.take() };
+        if let Some(root) = self.root.take() {
+            let mut vec = VecDeque::new();
+            vec.push_back(root);
+            while let Some(node) = vec.pop_front() {
+                if let Some(left) = node.borrow_mut().left.take() {
+                    left.borrow_mut().parent = None;
+                    vec.push_back(left);
+                }
+                if let Some(right) = node.borrow_mut().right.take() {
+                    right.borrow_mut().parent = None;
+                    vec.push_back(right);
+                }
+            }
         }
     }
 }
@@ -114,7 +131,17 @@ impl<T: Ord> BST<T> {
     }
 
     pub fn search(&self, data: &T) -> bool {
-        unimplemented!()
+        let mut tmp = self.root.clone();
+        while let Some(t) = tmp.clone() {
+            if **t.borrow() > *data {
+                tmp = t.borrow().left.clone();
+            } else if **t.borrow() < *data {
+                tmp = t.borrow().right.clone();
+            } else {
+                return true;
+            }
+        }
+        false
     }
 
     fn min(&self) -> Option<Link<T>> {
@@ -265,10 +292,79 @@ mod tests {
     extern crate env_logger;
 
     use super::*;
+    use std::cell::Cell;
+
+    #[derive(Debug, Ord, Default, PartialEq, PartialOrd, Eq, Clone)]
+    struct DropCounter(Cell<u64>);
+
+    impl DropCounter {
+        fn new() -> Self {
+            DropCounter(Cell::new(0))
+        }
+
+        fn add_one(&self) {
+            self.0.set(self.0.get() + 1);
+        }
+
+        fn get_count(&self) -> u64 {
+            self.0.get()
+        }
+    }
+
+    #[derive(Debug, Eq)]
+    struct Td<'a> {
+        dc: &'a DropCounter,
+        id: u64,
+    }
+
+    impl<'a> Td<'a> {
+        fn new<'b: 'a>(id: u64, dc: &'b DropCounter) -> Self {
+            Td::<'b> { dc: dc, id: id }
+        }
+    }
+
+    impl<'a> PartialEq for Td<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl<'a> PartialOrd for Td<'a> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
+    impl<'a> Ord for Td<'a> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.id.cmp(&other.id)
+        }
+    }
+
+    impl<'a> Drop for Td<'a> {
+        fn drop(&mut self) {
+            self.dc.add_one();
+        }
+    }
 
     #[test]
     fn test_bst() {}
 
     #[test]
-    fn test_drop() {}
+    fn test_drop() {
+        env_logger::init();
+        let dc = DropCounter::new();
+        {
+            let mut bst: BST<_> = Default::default();
+            bst.insert(Td::new(5, &dc));
+            bst.insert(Td::new(3, &dc));
+            bst.insert(Td::new(1, &dc));
+            bst.insert(Td::new(4, &dc));
+            bst.insert(Td::new(7, &dc));
+            bst.insert(Td::new(6, &dc));
+            bst.insert(Td::new(8, &dc));
+        }
+        assert_eq!(7, dc.get_count());
+        info!("{}", dc.get_count());
+    }
 }
