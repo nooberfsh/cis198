@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn test_drop() {
-        env_logger::init();
+        env_logger::init().unwrap();
         let dc = DropCounter::new();
         {
             let mut bst: BST<_> = Default::default();
@@ -366,5 +366,75 @@ mod tests {
         }
         assert_eq!(7, dc.get_count());
         info!("{}", dc.get_count());
+
+        let dc = DropCounter::new();
+        {
+            let mut bst: BST<_> = Default::default();
+            bst.insert(Td::new(5, &dc));
+        }
+        assert_eq!(1, dc.get_count());
+    }
+
+    #[test]
+    fn test_search() {
+        let dc = DropCounter::new();
+        {
+            let mut bst: BST<_> = Default::default();
+            bst.insert(Td::new(5, &dc));
+            bst.insert(Td::new(3, &dc));
+            bst.insert(Td::new(1, &dc));
+            bst.insert(Td::new(4, &dc));
+            bst.insert(Td::new(7, &dc));
+            bst.insert(Td::new(6, &dc));
+            bst.insert(Td::new(8, &dc));
+
+            assert_eq!(true, bst.search(&Td::new(5, &dc)));
+            assert_eq!(false, bst.search(&Td::new(10, &dc)));
+
+            let bst: BST<u32> = Default::default();
+            assert_eq!(false, bst.search(&3));
+        }
+    }
+
+    #[test]
+    fn test_iter() {
+        let mut bst: BST<_> = Default::default();
+        bst.insert(5);
+        bst.insert(3);
+        bst.insert(1);
+        bst.insert(4);
+        bst.insert(7);
+        bst.insert(6);
+        bst.insert(8);
+
+        let a = vec![1, 3, 4, 5, 6, 7, 8];
+
+        let b: Vec<_> = bst.iter().map(|t| *t).collect();
+        assert_eq!(a, b);
+
+        let mut c = vec![];
+        for t in &b {
+            c.push(*t);
+        }
+        assert_eq!(a, c);
+
+        let mut b: Vec<_> = bst.iter_mut().map(|t| *t).collect();
+        assert_eq!(a, b);
+
+        let mut c = vec![];
+        for t in &mut b {
+            *t += 1;
+        }
+        for t in & b {
+            c.push(*t);
+        }
+        let d: Vec<_> = a.clone().into_iter().map(|t| t+1).collect();
+        assert_eq!(c,d);
+
+        let b: Vec<_> = bst.into_iter().collect();
+        assert_eq!(a, b);
+
+        let mut bst: BST<i32> = Default::default();
+        assert_eq!(0, bst.iter().count());
     }
 }
