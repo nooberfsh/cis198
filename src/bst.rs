@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::cmp::Ordering;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::fmt::Debug;
 use std::iter::IntoIterator;
 use std::marker::PhantomData;
@@ -57,6 +57,12 @@ impl<T: Ord> Deref for Node<T> {
     type Target = T;
     fn deref(&self) -> &T {
         &self.data
+    }
+}
+
+impl<T: Ord> DerefMut for Node<T> {
+    fn deref_mut(&mut self) ->&mut T {
+        &mut self.data
     }
 }
 
@@ -144,6 +150,13 @@ impl<T: Ord> BST<T> {
             _marker: Default::default(),
         }
     }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            next: self.min(),
+            _marker:Default::default(),
+        }
+    }
 }
 
 fn min_link<T: Ord>(mut parent: Link<T>) -> Link<T> {
@@ -183,6 +196,22 @@ impl<T: Ord + Debug> IntoIterator for BST<T> {
     }
 }
 
+impl<'a, T: Ord + Debug> IntoIterator for &'a BST<T> {
+    type Item = &'a T;
+    type IntoIter = Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, T: Ord + Debug> IntoIterator for &'a mut BST<T> {
+    type Item = &'a mut T;
+    type IntoIter = IterMut<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
 pub struct IntoIter<T: Ord> {
     min: Option<Link<T>>,
     bst: BST<T>,
@@ -191,6 +220,11 @@ pub struct IntoIter<T: Ord> {
 pub struct Iter<'a, T: Ord + 'a> {
     next: Option<Link<T>>,
     _marker: PhantomData<&'a T>,
+}
+
+pub struct IterMut<'a, T: Ord + 'a> {
+    next: Option<Link<T>>,
+    _marker: PhantomData<&'a mut T>,
 }
 
 impl<T: Ord + Debug> Iterator for IntoIter<T> {
@@ -211,6 +245,16 @@ impl<'a, T: Ord> Iterator for Iter<'a, T> {
         self.next.take().map(|next| {
             self.next = next_link(next.clone());
             unsafe { &**next.as_ptr() }
+        })
+    }
+}
+
+impl<'a, T: Ord> Iterator for IterMut<'a, T> {
+    type Item = &'a mut T;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next.take().map(|next| {
+            self.next = next_link(next.clone());
+            unsafe { &mut **next.as_ptr() }
         })
     }
 }
