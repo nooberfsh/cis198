@@ -61,7 +61,7 @@ impl<T: Ord> Deref for Node<T> {
 }
 
 impl<T: Ord> DerefMut for Node<T> {
-    fn deref_mut(&mut self) ->&mut T {
+    fn deref_mut(&mut self) -> &mut T {
         &mut self.data
     }
 }
@@ -154,7 +154,7 @@ impl<T: Ord> BST<T> {
     pub fn iter_mut(&mut self) -> IterMut<T> {
         IterMut {
             next: self.min(),
-            _marker:Default::default(),
+            _marker: Default::default(),
         }
     }
 }
